@@ -89,7 +89,12 @@ class SquashMergeExecutor {
   async processRepository(owner, repo, sourceBranch, targetBranch, commitMessageTemplate, deleteSourceBranch, createRelease) {
     try {
       // Check if repository exists and is accessible
-      await this.octokit.rest.repos.get({ owner, repo });
+      try {
+        await this.octokit.rest.repos.get({ owner, repo });
+      } catch (error) {
+        console.error(`❌ Failed to access ${owner}/${repo}:`, error);
+        throw new Error(`Repository ${owner}/${repo} not accessible: ${error.message}`);
+      }
       
       // Check if source branch exists
       let sourceBranchRef;
@@ -303,7 +308,14 @@ async function main() {
   try {
     // Get inputs
     const token = core.getInput('token');
-    const targetRepos = core.getInput('target-repos').split(',').map(repo => repo.trim());
+    const targetReposRaw = core.getInput('target-repos');
+    if (!targetReposRaw) throw new Error('Target repositories input is missing.');
+
+    const targetRepos = targetReposRaw
+      .split(',')
+      .map(repo => repo.trim())
+      .filter(repo => repo.includes('/')); // "owner/repo" 형태 확인
+
     const sourceBranch = core.getInput('source-branch');
     const targetBranch = core.getInput('target-branch');
     const commitMessageTemplate = core.getInput('commit-message');
