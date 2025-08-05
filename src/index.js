@@ -308,10 +308,9 @@ async function main() {
   try {
     // Get inputs
     const token = core.getInput('token');
-    const targetRepos = process.env.INPUT_TARGET_REPOS;
-    if (!targetRepos) {
-      throw new Error("Target repositories input is missing.");
-    }
+    const targetReposInput = core.getInput('target-repos');
+    const targetRepos = targetReposInput.split(',').map(repo => repo.trim());
+    core.info(`Target Repositories: ${targetRepos.join(', ')}`);
 
     const sourceBranch = core.getInput('source-branch');
     const targetBranch = core.getInput('target-branch');
