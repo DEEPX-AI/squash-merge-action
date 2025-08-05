@@ -33010,13 +33010,10 @@ async function main() {
   try {
     // Get inputs
     const token = core.getInput('token');
-    const targetReposRaw = core.getInput('target-repos');
-    if (!targetReposRaw) throw new Error('Target repositories input is missing.');
-
-    const targetRepos = targetReposRaw
-      .split(',')
-      .map(repo => repo.trim())
-      .filter(repo => repo.includes('/')); // "owner/repo" 형태 확인
+    const targetRepos = process.env.INPUT_TARGET_REPOS;
+    if (!targetRepos) {
+      throw new Error("Target repositories input is missing.");
+    }
 
     const sourceBranch = core.getInput('source-branch');
     const targetBranch = core.getInput('target-branch');
