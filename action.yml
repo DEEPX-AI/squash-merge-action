@@ -39,6 +39,9 @@ outputs:
   merge_summary:
     description: 'Detailed merge summary'
     value: ${{ steps.squash-merge.outputs.merge_summary }}
+  highest_bump_type:
+    description: 'Highest Bump Type among target repositories'
+    value: ${{ steps.squash-merge.outputs.highest_bump_type }}
 
 runs:
   using: 'composite'

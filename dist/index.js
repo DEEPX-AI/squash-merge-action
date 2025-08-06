@@ -32843,6 +32843,7 @@ class SquashMergeExecutor {
         target_branch,
         commits_count: comparison.ahead_by,
         merge_commit_sha: merge_result.sha,
+        commit_message: merge_result.commit_message,
         source_branch_deleted: delete_source_branch === 'true',
         release: release_info
       };
@@ -32916,7 +32917,10 @@ class SquashMergeExecutor {
       
       const { stdout: latest_commit_sha } = await execPromise(`git rev-parse HEAD`);
       
-      return { sha: latest_commit_sha.trim() };
+      return { 
+        sha: latest_commit_sha.trim(),
+        commit_message
+      };
     } catch (error) {
       if (error.stderr && error.stderr.includes('fatal: refusing to merge unrelated histories')) {
         throw new Error('Merge conflict detected - manual resolution required');
@@ -33006,6 +33010,20 @@ class SquashMergeExecutor {
   }
 }
 
+function determineBumpTypeFromMessage(message) {
+  if (message.startsWith('major:')) return 'major';
+  if (message.startsWith('minor:')) return 'minor';
+  if (message.startsWith('patch:')) return 'patch';
+  return null;
+}
+
+function getHigherBumpType(typeA, typeB) {
+  const levels = { patch: 1, minor: 2, major: 3 };
+  if (!typeA) return typeB;
+  if (!typeB) return typeA;
+  return levels[typeA] > levels[typeB] ? typeA : typeB;
+}
+
 async function main() {
   try {
     // Get inputs - 언더스코어 사용
@@ -33038,12 +33056,22 @@ async function main() {
     // Execute squash merge
     const executor = new SquashMergeExecutor(token);
     const results = await executor.executeSquashMerge(config);
+
+    // Extract highest bump type from all merged commit messages
+    let highestBumpType = null;
+    for (const result of results.successful) {
+      if (result.commit_message) {
+        const bumpType = determineBumpTypeFromMessage(result.commit_message);
+        highestBumpType = getHigherBumpType(highestBumpType, bumpType);
+      }
+    }
     
     // Set outputs
     core.setOutput('merged_repos', results.successful.map(r => r.repo).join(','));
     core.setOutput('success_count', results.successful.length.toString());
     core.setOutput('failed_repos', results.failed.map(r => r.repo).join(','));
     core.setOutput('merge_summary', JSON.stringify(results.summary));
+    core.setOutput('highest_bump_type', highestBumpType);
     
     // Check if there were any failures
     if (results.failed.length > 0) {
