@@ -32714,7 +32714,7 @@ class SquashMergeExecutor {
   }
 
   async executeSquashMerge(config) {
-    const { target_repos, source_branch, target_branch, commit_message_template, delete_source_branch, create_release } = config;
+    const { target_repos, source_branch, target_branch, delete_source_branch, create_release } = config;
     
     console.log('🚀 Starting Squash Merge Operation');
     console.log(`Source: ${source_branch} → Target: ${target_branch}`);
@@ -32750,7 +32750,6 @@ class SquashMergeExecutor {
           repo, 
           source_branch, 
           target_branch, 
-          commit_message_template,
           delete_source_branch,
           create_release
         );
@@ -32792,7 +32791,7 @@ class SquashMergeExecutor {
     return results;
   }
 
-  async processRepository(owner, repo, source_branch, target_branch, commit_message_template, delete_source_branch, create_release) {
+  async processRepository(owner, repo, source_branch, target_branch, delete_source_branch, create_release) {
     try {      
       // Check if there are changes to merge
       const { data: comparison } = await this.octokit.rest.repos.compareCommits({
@@ -32812,21 +32811,12 @@ class SquashMergeExecutor {
       
       console.log(`  📈 Found ${comparison.ahead_by} commits to merge`);
       
-      // Create squash merge commit message
-      const commit_message = this.createCommitMessage(
-        commit_message_template,
-        source_branch,
-        target_branch,
-        comparison.commits
-      );
-      
       // Perform squash merge using git commands
       const merge_result = await this.performSquashMerge(
         owner,
         repo,
         source_branch,
-        target_branch,
-        commit_message
+        target_branch
       );
       
       console.log(`  ✅ Squash merge completed`);
@@ -32864,7 +32854,7 @@ class SquashMergeExecutor {
     }
   }
 
-  async performSquashMerge(owner, repo, source_branch, target_branch, commit_message) {
+  async performSquashMerge(owner, repo, source_branch, target_branch) {
     let originalDir = process.cwd();
     
     try {
@@ -32880,14 +32870,35 @@ class SquashMergeExecutor {
       process.chdir(repoPath);
       
       // Git config 설정 (GitHub Actions에서 필요)
-      await execPromise(`git config user.name "GitHub Actions"`);
-      await execPromise(`git config user.email "actions@github.com"`);
+      await execPromise(`git config user.name "dx-ci"`);
+      await execPromise(`git config user.email "dci@deepx.ai"`);
       
       // 메인 브랜치로 체크아웃
       await execPromise(`git checkout ${target_branch}`);
       
       // staging 브랜치의 최신 변경사항을 가져옴
       await execPromise(`git fetch origin ${source_branch}`);
+
+      // staging 브랜치의 release.ver 파일을 읽어 커밋 메시지로 사용
+      console.log(`  📄 Reading release.ver from ${source_branch} branch...`);
+      await execPromise(`git checkout origin/${source_branch} -- release.ver`);
+      
+      const fs = (__nccwpck_require__(9896).promises);
+      let commit_message;
+      try {
+        const releaseVerContent = await fs.readFile('release.ver', 'utf8');
+        commit_message = releaseVerContent.trim();
+        if (!commit_message) {
+          throw new Error('release.ver file is empty.');
+        }
+        console.log(`  📝 Using commit message from release.ver: "${commit_message}"`);
+      } catch (error) {
+        console.warn(`⚠️ Could not read release.ver from ${source_branch} branch. Using default commit message.`);
+        commit_message = 'chore: squash merge'; // 파일이 없거나 읽을 수 없을 때 사용할 기본 메시지
+      } finally {
+        // 임시로 가져온 release.ver 파일을 정리
+        await execPromise('rm release.ver');
+      }
 
       // squash merge 수행
       console.log(`  🔄 Squash merging ${source_branch} into ${target_branch}...`);
@@ -33002,7 +33013,6 @@ async function main() {
 
     const source_branch = core.getInput('source_branch');
     const target_branch = core.getInput('target_branch');
-    const commit_message_template = core.getInput('commit_message');
     const delete_source_branch = core.getInput('delete_source_branch');
     const create_release = core.getInput('create_release');
     
@@ -33018,7 +33028,6 @@ async function main() {
       target_repos,
       source_branch,
       target_branch,
-      commit_message_template,
       delete_source_branch,
       create_release
     };

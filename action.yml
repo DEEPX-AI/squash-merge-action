@@ -17,10 +17,6 @@ inputs:
     description: 'Target branch to merge into'
     required: false
     default: 'main'
-  commit_message:
-    description: 'Squash merge commit message template'
-    required: false
-    default: 'chore: squash merge {source} into {target}'
   delete_source_branch:
     description: 'Delete source branch after successful merge'
     required: false
@@ -62,7 +58,6 @@ runs:
         INPUT_TARGET_REPOS: ${{ inputs.target_repos }}
         INPUT_SOURCE_BRANCH: ${{ inputs.source_branch }}
         INPUT_TARGET_BRANCH: ${{ inputs.target_branch }}
-        INPUT_COMMIT_MESSAGE: ${{ inputs.commit_message }}
         INPUT_DELETE_SOURCE_BRANCH: ${{ inputs.delete_source_branch }}
         INPUT_CREATE_RELEASE: ${{ inputs.create_release }}
 
