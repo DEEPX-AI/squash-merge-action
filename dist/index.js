@@ -33011,9 +33011,10 @@ class SquashMergeExecutor {
 }
 
 function determineBumpTypeFromMessage(message) {
-  if (message.startsWith('major:')) return 'major';
-  if (message.startsWith('minor:')) return 'minor';
-  if (message.startsWith('patch:')) return 'patch';
+  const lowerMessage = message.toLowerCase().trim();
+  if (lowerMessage.includes('major') || lowerMessage.startsWith('major:')) return 'major';
+  if (lowerMessage.includes('minor') || lowerMessage.startsWith('minor:')) return 'minor';
+  if (lowerMessage.includes('patch') || lowerMessage.startsWith('patch:')) return 'patch';
   return null;
 }
 
@@ -33061,10 +33062,13 @@ async function main() {
     let highestBumpType = null;
     for (const result of results.successful) {
       if (result.commit_message) {
+        console.log(`🔍 Analyzing commit message: "${result.commit_message}"`);
         const bumpType = determineBumpTypeFromMessage(result.commit_message);
+        console.log(`  → Detected bump type: ${bumpType}`);
         highestBumpType = getHigherBumpType(highestBumpType, bumpType);
       }
     }
+    console.log(`🎯 Final highest bump type: ${highestBumpType}`);
     
     // Set outputs
     core.setOutput('merged_repos', results.successful.map(r => r.repo).join(','));
