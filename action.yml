@@ -6,43 +6,43 @@ inputs:
   token:
     description: 'GitHub token with repository write access'
     required: true
-  target-repos:
+  target_repos:
     description: 'Comma-separated list of target repositories (e.g., "DEEPX-AI/do-dx_rt,DEEPX-AI/do-dx_app")'
     required: true
-  source-branch:
+  source_branch:
     description: 'Source branch to merge from'
     required: false
     default: 'staging'
-  target-branch:
+  target_branch:
     description: 'Target branch to merge into'
     required: false
     default: 'main'
-  commit-message:
+  commit_message:
     description: 'Squash merge commit message template'
     required: false
     default: 'chore: squash merge {source} into {target}'
-  delete-source-branch:
+  delete_source_branch:
     description: 'Delete source branch after successful merge'
     required: false
     default: 'false'
-  create-release:
+  create_release:
     description: 'Create a release after successful merge'
     required: false
     default: 'false'
 
 outputs:
-  merged-repos:
+  merged_repos:
     description: 'List of repositories that were successfully merged'
-    value: ${{ steps.squash-merge.outputs.merged-repos }}
-  success-count:
+    value: ${{ steps.squash-merge.outputs.merged_repos }}
+  success_count:
     description: 'Number of successfully merged repositories'
-    value: ${{ steps.squash-merge.outputs.success-count }}
-  failed-repos:
+    value: ${{ steps.squash-merge.outputs.success_count }}
+  failed_repos:
     description: 'List of repositories that failed to merge'
-    value: ${{ steps.squash-merge.outputs.failed-repos }}
-  merge-summary:
+    value: ${{ steps.squash-merge.outputs.failed_repos }}
+  merge_summary:
     description: 'Detailed merge summary'
-    value: ${{ steps.squash-merge.outputs.merge-summary }}
+    value: ${{ steps.squash-merge.outputs.merge_summary }}
 
 runs:
   using: 'composite'
@@ -59,12 +59,12 @@ runs:
         node ${{ github.action_path }}/dist/index.js
       env:
         INPUT_TOKEN: ${{ inputs.token }}
-        INPUT_TARGET_REPOS: ${{ inputs.target-repos }}
-        INPUT_SOURCE_BRANCH: ${{ inputs.source-branch }}
-        INPUT_TARGET_BRANCH: ${{ inputs.target-branch }}
-        INPUT_COMMIT_MESSAGE: ${{ inputs.commit-message }}
-        INPUT_DELETE_SOURCE_BRANCH: ${{ inputs.delete-source-branch }}
-        INPUT_CREATE_RELEASE: ${{ inputs.create-release }}
+        INPUT_TARGET_REPOS: ${{ inputs.target_repos }}
+        INPUT_SOURCE_BRANCH: ${{ inputs.source_branch }}
+        INPUT_TARGET_BRANCH: ${{ inputs.target_branch }}
+        INPUT_COMMIT_MESSAGE: ${{ inputs.commit_message }}
+        INPUT_DELETE_SOURCE_BRANCH: ${{ inputs.delete_source_branch }}
+        INPUT_CREATE_RELEASE: ${{ inputs.create_release }}
 
 branding:
   icon: 'git-merge'
