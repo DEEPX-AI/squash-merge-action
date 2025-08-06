@@ -6,9 +6,10 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 
 class SquashMergeExecutor {
-  constructor(token) {
-    this.octokit = new Octokit({ auth: token });
-  }
+  constructor(token) {
+    this.octokit = new Octokit({ auth: token });
+    this.token = token; // 토큰을 별도로 저장
+  }
 
   async executeSquashMerge(config) {
     const { target_repos, source_branch, target_branch, commit_message_template, delete_source_branch, create_release } = config;
@@ -107,7 +108,7 @@ class SquashMergeExecutor {
         };
       }
       
-      console.log(`  📈 Found ${comparison.ahead_by} commits to merge`);
+      console.log(`  📈 Found ${comparison.ahead_by} commits to merge`);
       
       // Create squash merge commit message
       const commit_message = this.createCommitMessage(
@@ -126,19 +127,19 @@ class SquashMergeExecutor {
         commit_message
       );
       
-      console.log(`  ✅ Squash merge completed`);
+      console.log(`  ✅ Squash merge completed`);
       
       // Delete source branch if requested
       if (delete_source_branch === 'true') {
         await this.deleteSourceBranch(owner, repo, source_branch);
-        console.log(`  🗑️ Deleted source branch '${source_branch}'`);
+        console.log(`  🗑️ Deleted source branch '${source_branch}'`);
       }
       
       // Create release if requested
       let release_info = null;
       if (create_release === 'true') {
         release_info = await this.createRelease(owner, repo, target_branch, comparison.commits);
-        console.log(`  🏷️ Created release: ${release_info.tag_name}`);
+        console.log(`  🏷️ Created release: ${release_info.tag_name}`);
       }
       
       return {
@@ -162,17 +163,23 @@ class SquashMergeExecutor {
   }
 
   async performSquashMerge(owner, repo, source_branch, target_branch, commit_message) {
+    let originalDir = process.cwd();
+    
     try {
       // git 명령어를 사용하기 위해 작업 디렉토리로 이동
       const { stdout: repoDir } = await execPromise(`mktemp -d`);
       const repoPath = repoDir.trim();
 
-      // 레포지토리 클론
-      console.log(`  ⬇️ Cloning repository ${owner}/${repo}...`);
-      await execPromise(`git clone https://x-access-token:${this.octokit.auth}@github.com/${owner}/${repo}.git ${repoPath}`);
+      // 레포지토리 클론 - this.token 사용
+      console.log(`  ⬇️ Cloning repository ${owner}/${repo}...`);
+      await execPromise(`git clone https://x-access-token:${this.token}@github.com/${owner}/${repo}.git ${repoPath}`);
 
       // 작업 디렉토리로 이동
       process.chdir(repoPath);
+      
+      // Git config 설정 (GitHub Actions에서 필요)
+      await execPromise(`git config user.name "GitHub Actions"`);
+      await execPromise(`git config user.email "actions@github.com"`);
       
       // 메인 브랜치로 체크아웃
       await execPromise(`git checkout ${target_branch}`);
@@ -181,14 +188,15 @@ class SquashMergeExecutor {
       await execPromise(`git fetch origin ${source_branch}`);
 
       // squash merge 수행
-      console.log(`  合并 Squash merging ${source_branch} into ${target_branch}...`);
+      console.log(`  🔄 Squash merging ${source_branch} into ${target_branch}...`);
       await execPromise(`git merge --squash origin/${source_branch}`);
 
-      // 커밋 메시지 추가
-      await execPromise(`git commit -m "${commit_message}"`);
+      // 커밋 메시지 추가 - 특수문자 escape 처리
+      const escaped_message = commit_message.replace(/"/g, '\\"');
+      await execPromise(`git commit -m "${escaped_message}"`);
 
       // 푸시
-      console.log(`  ⬆️ Pushing changes to ${target_branch}...`);
+      console.log(`  ⬆️ Pushing changes to ${target_branch}...`);
       await execPromise(`git push origin ${target_branch}`);
       
       const { stdout: latest_commit_sha } = await execPromise(`git rev-parse HEAD`);
@@ -198,10 +206,13 @@ class SquashMergeExecutor {
       if (error.stderr && error.stderr.includes('fatal: refusing to merge unrelated histories')) {
         throw new Error('Merge conflict detected - manual resolution required');
       }
-      if (error.stderr && error.stderr.includes('fatal: A branch named') && error.stderr.includes('already exists')) {
+      if (error.stderr && error.stderr.includes('nothing to commit')) {
         throw new Error('Nothing to merge - branches are identical');
       }
       throw error;
+    } finally {
+      // 원래 디렉토리로 복원
+      process.chdir(originalDir);
     }
   }
 
@@ -281,7 +292,7 @@ class SquashMergeExecutor {
 
 async function main() {
   try {
-    // Get inputs
+    // Get inputs - 언더스코어 사용
     const token = core.getInput('token');
     const target_repos_input = core.getInput('target_repos');
     const target_repos = target_repos_input.split(',').map(repo => repo.trim());
