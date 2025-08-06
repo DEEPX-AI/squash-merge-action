@@ -32825,6 +32825,8 @@ class SquashMergeExecutor {
       if (delete_source_branch === 'true') {
         await this.deleteSourceBranch(owner, repo, source_branch);
         console.log(`  🗑️ Deleted source branch '${source_branch}'`);
+        console.log(` Recreating '${source_branch}' branch from updated '${target_branch}' branch`);
+        await this.recreateSourceBranchAfterDeletion(owner, repo, source_branch, target_branch);
       }
       
       // Create release if requested
@@ -32929,27 +32931,6 @@ class SquashMergeExecutor {
     }
   }
 
-  createCommitMessage(template, source_branch, target_branch, commits) {
-    let message = template
-      .replace('{source}', source_branch)
-      .replace('{target}', target_branch);
-    
-    // Add commit details
-    message += `\n\nMerged ${commits.length} commits:\n`;
-    
-    commits.slice(0, 10).forEach(commit => { // Show max 10 commits
-      const short_sha = commit.sha.substring(0, 8);
-      const short_message = commit.commit.message.split('\n')[0].substring(0, 60);
-      message += `- ${short_sha}: ${short_message}\n`;
-    });
-    
-    if (commits.length > 10) {
-      message += `... and ${commits.length - 10} more commits\n`;
-    }
-    
-    return message;
-  }
-
   async deleteSourceBranch(owner, repo, branch_name) {
     // Don't delete main/master branches
     if (['main', 'master'].includes(branch_name)) {
@@ -32962,6 +32943,28 @@ class SquashMergeExecutor {
       repo,
       ref: `heads/${branch_name}`
     });
+  }
+
+  async recreateSourceBranchAfterDeletion(owner, repo, branch_name, base_branch) {
+    const { data: baseRefData } = await this.octokit.rest.git.getRef({
+      owner,
+      repo,
+      ref: `heads/${base_branch}`,
+    });
+
+    const baseSha = baseRefData.object.sha;
+
+    console.log(`🔁 Creating branch '${branch_name}' from '${base_branch}' at commit ${baseSha}`);
+
+    // Create a new branch pointing to the base branch's latest commit
+    await this.octokit.rest.git.createRef({
+      owner,
+      repo,
+      ref: `refs/heads/${branch_name}`,
+      sha: baseSha,
+    });
+
+    console.log(`✅ Branch '${branch_name}' successfully recreated from '${base_branch}'`);
   }
 
   async createRelease(owner, repo, target_branch, commits) {
