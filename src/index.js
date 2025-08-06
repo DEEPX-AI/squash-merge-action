@@ -3,6 +3,7 @@ const github = require('@actions/github');
 const { Octokit } = require('@octokit/rest');
 const { exec } = require('child_process');
 const util = require('util');
+const semver = require('semver');
 const execPromise = util.promisify(exec);
 
 class SquashMergeExecutor {
@@ -109,6 +110,9 @@ class SquashMergeExecutor {
       
       console.log(`  📈 Found ${comparison.ahead_by} commits to merge`);
       
+      // Get version comparison and bump type
+      const versionInfo = await this.getVersionComparison(owner, repo, source_branch, target_branch);
+      
       // Perform squash merge using git commands
       const merge_result = await this.performSquashMerge(
         owner,
@@ -143,7 +147,10 @@ class SquashMergeExecutor {
         merge_commit_sha: merge_result.sha,
         commit_message: merge_result.commit_message,
         source_branch_deleted: delete_source_branch === 'true',
-        release: release_info
+        release: release_info,
+        bump_type: versionInfo.bump_type,
+        target_version: versionInfo.target_version,
+        source_version: versionInfo.source_version
       };
       
     } catch (error) {
@@ -151,6 +158,74 @@ class SquashMergeExecutor {
         repo: `${owner}/${repo}`,
         success: false,
         error: error.message
+      };
+    }
+  }
+
+  async getVersionComparison(owner, repo, source_branch, target_branch) {
+    try {
+      // Get release.ver from target branch
+      let target_version;
+      try {
+        const { data: targetFile } = await this.octokit.rest.repos.getContent({
+          owner,
+          repo,
+          path: 'release.ver',
+          ref: target_branch
+        });
+        target_version = Buffer.from(targetFile.content, 'base64').toString('utf8').trim();
+      } catch (error) {
+        console.warn(`  ⚠️ Could not read release.ver from ${target_branch} branch`);
+        target_version = '0.0.0'; // Default version if not found
+      }
+
+      // Get release.ver from source branch
+      let source_version;
+      try {
+        const { data: sourceFile } = await this.octokit.rest.repos.getContent({
+          owner,
+          repo,
+          path: 'release.ver',
+          ref: source_branch
+        });
+        source_version = Buffer.from(sourceFile.content, 'base64').toString('utf8').trim();
+      } catch (error) {
+        console.warn(`  ⚠️ Could not read release.ver from ${source_branch} branch`);
+        source_version = '0.0.0'; // Default version if not found
+      }
+
+      console.log(`  📊 Version comparison: ${target_version} → ${source_version}`);
+
+      // Determine bump type using semver
+      let bump_type = null;
+      if (semver.valid(target_version) && semver.valid(source_version)) {
+        if (semver.gt(source_version, target_version)) {
+          const diff = semver.diff(target_version, source_version);
+          if (diff === 'major') {
+            bump_type = 'major';
+          } else if (diff === 'minor' || diff === 'preminor') {
+            bump_type = 'minor';
+          } else if (diff === 'patch' || diff === 'prepatch') {
+            bump_type = 'patch';
+          }
+        }
+      } else {
+        console.warn(`  ⚠️ Invalid semver format: target=${target_version}, source=${source_version}`);
+      }
+
+      console.log(`  🔍 Detected bump type: ${bump_type || 'none'}`);
+
+      return {
+        target_version,
+        source_version,
+        bump_type
+      };
+    } catch (error) {
+      console.warn(`  ⚠️ Error comparing versions: ${error.message}`);
+      return {
+        target_version: '0.0.0',
+        source_version: '0.0.0',
+        bump_type: null
       };
     }
   }
@@ -181,7 +256,7 @@ class SquashMergeExecutor {
       await execPromise(`git fetch origin ${source_branch}`);
 
       // staging 브랜치의 release.ver 파일을 읽어 커밋 메시지로 사용
-      console.log(`  📄 Reading release.ver from ${source_branch} branch...`);
+      console.log(`  📄 Reading release.ver from ${source_branch} branch...`);
       await execPromise(`git checkout origin/${source_branch} -- release.ver`);
       
       const fs = require('fs').promises;
@@ -192,7 +267,7 @@ class SquashMergeExecutor {
         if (!commit_message) {
           throw new Error('release.ver file is empty.');
         }
-        console.log(`  📝 Using commit message from release.ver: "${commit_message}"`);
+        console.log(`  📝 Using commit message from release.ver: "${commit_message}"`);
       } catch (error) {
         console.warn(`⚠️ Could not read release.ver from ${source_branch} branch. Using default commit message.`);
         commit_message = 'chore: squash merge'; // 파일이 없거나 읽을 수 없을 때 사용할 기본 메시지
@@ -308,14 +383,6 @@ class SquashMergeExecutor {
   }
 }
 
-function determineBumpTypeFromMessage(message) {
-  const lowerMessage = message.toLowerCase().trim();
-  if (lowerMessage.includes('major') || lowerMessage.startsWith('major:')) return 'major';
-  if (lowerMessage.includes('minor') || lowerMessage.startsWith('minor:')) return 'minor';
-  if (lowerMessage.includes('patch') || lowerMessage.startsWith('patch:')) return 'patch';
-  return null;
-}
-
 function getHigherBumpType(typeA, typeB) {
   const levels = { patch: 1, minor: 2, major: 3 };
   if (!typeA) return typeB;
@@ -356,24 +423,22 @@ async function main() {
     const executor = new SquashMergeExecutor(token);
     const results = await executor.executeSquashMerge(config);
 
-    // Extract highest bump type from all merged commit messages
+    // Extract highest bump type from all successful merges
     let highestBumpType = null;
     for (const result of results.successful) {
-      if (result.commit_message) {
-        console.log(`🔍 Analyzing commit message: "${result.commit_message}"`);
-        const bumpType = determineBumpTypeFromMessage(result.commit_message);
-        console.log(`  → Detected bump type: ${bumpType}`);
-        highestBumpType = getHigherBumpType(highestBumpType, bumpType);
+      if (result.bump_type) {
+        console.log(`🔍 Repository ${result.repo}: ${result.target_version} → ${result.source_version} (${result.bump_type})`);
+        highestBumpType = getHigherBumpType(highestBumpType, result.bump_type);
       }
     }
-    console.log(`🎯 Final highest bump type: ${highestBumpType}`);
+    console.log(`🎯 Final highest bump type: ${highestBumpType || 'none'}`);
     
     // Set outputs
     core.setOutput('merged_repos', results.successful.map(r => r.repo).join(','));
     core.setOutput('success_count', results.successful.length.toString());
     core.setOutput('failed_repos', results.failed.map(r => r.repo).join(','));
     core.setOutput('merge_summary', JSON.stringify(results.summary));
-    core.setOutput('highest_bump_type', highestBumpType);
+    core.setOutput('highest_bump_type', highestBumpType || '');
     
     // Check if there were any failures
     if (results.failed.length > 0) {

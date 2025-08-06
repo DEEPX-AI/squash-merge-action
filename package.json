@@ -16,7 +16,7 @@
     "merge",
     "automation"
   ],
-  "author": "DEEPX-AI",
+  "author": "deepx-sanghyeopKim",
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.10.1",
